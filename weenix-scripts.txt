@@ -1,0 +1,43 @@
+# you can copy these functions into your .bashrc file
+# to permanently add them as commands you can call.
+# if you do this, you will need to start a new shell
+# session for them to go into affect.
+# Alternatively, you can source them in an individual session
+# $ source weenix-scripts.txt
+# Note, once sources, you will need to call these functions
+# from within your weenix directory (where the weenix executable
+# is). You could also update the WEENIX_DIR variables below.
+# If you do that, you can call these functions from anywhere.
+function wg {
+    if [[ $# -eq 1 ]]; then
+        if [[ "$1" != "-n" ]]; then
+            echo 'incorrect usage'
+            return 127
+        fi
+    fi
+
+    WEENIX_DIR=./
+
+    if [[ "$1" = "-n" ]]; then
+        $WEENIX_DIR/weenix -n -d gdb; pkill qemu
+    else
+        $WEENIX_DIR/weenix -d gdb; pkill qemu
+    fi
+}
+
+function rw {
+     if [[ $# -eq 1 ]]; then
+        if [[ "$1" != "-n" ]]; then
+            echo 'incorrect usage' ]]
+            return 127
+        fi
+    fi
+
+    WEENIX_DIR=./
+
+    if [[ "$1" = "-n" ]]; then
+        $WEENIX_DIR/weenix -n;
+    else
+        $WEENIX_DIR/weenix;
+    fi
+}

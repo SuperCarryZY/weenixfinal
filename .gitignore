@@ -1,0 +1,33 @@
+commands.gdb
+.gdb_history
+.vscode
+
+# normal build system output
+disk0.img
+disk0.vmdk
+*.[oad]
+*.pyc
+*.gdbcomm
+*.so
+
+.staging
+# editor temporary files
+\#*\#
+*~
+.*.swp
+*.tmp
+*.bak
+*.orig
+*.nfs*
+cmake-build-debug/*
+
+# Vagrant data
+.vagrant
+
+**.DS_Store
+
+**.log
+
+.idea/
+qemu/
+build/

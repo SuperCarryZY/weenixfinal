@@ -1,0 +1,8 @@
+2) Revamp Weenix toolchain, from Makefiles to deployment...
+3) Time stuff
+    - Better scheduler
+4) Smarter TLB invalidation
+5) Upgrade from APIC to x2APIC
+6) Replace all the userland tests/source code
+7) ABI compliance
+8) POSIX compliance ^.^
