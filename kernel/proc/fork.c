@@ -57,6 +57,73 @@ static uintptr_t fork_setup_stack(const regs_t *regs, void *kstack)
  */
 long do_fork(struct regs *regs)
 {
-    NOT_YET_IMPLEMENTED("VM: do_fork");
-    return -1;
+    // Create a new process
+    proc_t *child_proc = proc_create("forked");
+    if (!child_proc) {
+        return -ENOMEM;
+    }
+    
+    // Clone the current thread
+    kthread_t *child_thread = kthread_clone(curthr);
+    if (!child_thread) {
+        proc_destroy(child_proc);
+        return -ENOMEM;
+    }
+    
+    // Set up the child process - PID is already set by proc_create
+    child_thread->kt_proc = child_proc;
+    list_insert_tail(&child_proc->p_threads, &child_thread->kt_plink);
+    
+    // Clone the virtual memory map
+    vmmap_t *child_vmmap = vmmap_clone(curproc->p_vmmap);
+    if (!child_vmmap) {
+        kthread_destroy(child_thread);
+        proc_destroy(child_proc);
+        return -ENOMEM;
+    }
+    child_proc->p_vmmap = child_vmmap;
+    
+    // Set up copy-on-write for shared memory objects
+    vmarea_t *vma;
+    list_iterate(&child_vmmap->vmm_list, vma, vmarea_t, vma_plink) {
+        if (!(vma->vma_flags & MAP_SHARED)) {
+            // Create shadow objects for private mappings
+            mobj_t *shadow_obj = shadow_create(vma->vma_obj);
+            if (!shadow_obj) {
+                vmmap_destroy(&child_vmmap);
+                kthread_destroy(child_thread);
+                proc_destroy(child_proc);
+                return -ENOMEM;
+            }
+            
+            // Replace the original object with shadow object
+            mobj_ref(shadow_obj);
+            vma->vma_obj = shadow_obj;
+        }
+    }
+    
+    // Set up the child's registers
+    regs_t child_regs = *regs;
+    child_regs.r_rax = 0;  // Child returns 0
+    
+    // Set up the child's stack
+    uintptr_t child_rsp = fork_setup_stack(&child_regs, child_thread->kt_kstack);
+    child_thread->kt_ctx.c_rsp = child_rsp;
+    child_thread->kt_ctx.c_rip = (uintptr_t)userland_entry;
+    
+    // Unmap the parent's pages to trigger copy-on-write
+    vmarea_t *parent_vma;
+    list_iterate(&curproc->p_vmmap->vmm_list, parent_vma, vmarea_t, vma_plink) {
+        if (!(parent_vma->vma_flags & MAP_SHARED)) {
+            pt_unmap_range(curproc->p_pml4, 
+                          (uintptr_t)PN_TO_ADDR(parent_vma->vma_start),
+                          (uintptr_t)PN_TO_ADDR(parent_vma->vma_end - parent_vma->vma_start));
+        }
+    }
+    tlb_flush_all();
+    
+    // Add the child thread to the scheduler
+    sched_make_runnable(child_thread);
+    
+    return child_proc->p_pid;
 }

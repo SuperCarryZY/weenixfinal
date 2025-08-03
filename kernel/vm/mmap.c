@@ -55,8 +55,109 @@
 long do_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off,
              void **ret)
 {
-    NOT_YET_IMPLEMENTED("VM: do_mmap");
-    return -1;
+    KASSERT(curproc);
+    
+    // Error checking
+    if (len <= 0 || off < 0) {
+        return -EINVAL;
+    }
+    
+    if (!(flags & MAP_PRIVATE) && !(flags & MAP_SHARED)) {
+        return -EINVAL;
+    }
+    
+    if (flags & MAP_FIXED) {
+        if (!PAGE_ALIGNED((uintptr_t)addr)) {
+            return -EINVAL;
+        }
+        if ((uintptr_t)addr < USER_MEM_LOW || (uintptr_t)addr >= USER_MEM_HIGH) {
+            return -EINVAL;
+        }
+    }
+    
+    if (!PAGE_ALIGNED(off)) {
+        return -EINVAL;
+    }
+    
+    // Calculate page-aligned length
+    size_t page_len = PAGE_ALIGN_UP(len);
+    size_t npages = ADDR_TO_PN(page_len);
+    
+    // Handle anonymous mapping
+    if (flags & MAP_ANON) {
+        if (fd != -1) {
+            return -EINVAL;
+        }
+        
+        // Create anonymous mapping
+        vmarea_t *new_vma;
+        long result = vmmap_map(curproc->p_vmmap, NULL, 0, npages, prot, flags, off, VMMAP_DIR_HILO, &new_vma);
+        
+        if (result < 0) {
+            return result;
+        }
+        
+        if (ret) {
+            *ret = (void *)PN_TO_ADDR(new_vma->vma_start);
+        }
+        
+        // Flush TLB for the new mapping
+        tlb_flush_range((void *)PN_TO_ADDR(new_vma->vma_start), page_len);
+        
+        return 0;
+    }
+    
+    // Handle file mapping
+    if (fd < 0 || fd >= NFILES) {
+        return -EBADF;
+    }
+    
+    file_t *file = fget(fd);
+    if (!file) {
+        return -EBADF;
+    }
+    
+    // Check file permissions
+    if (prot & PROT_READ && !(file->f_mode & FMODE_READ)) {
+        fput(&file);
+        return -EACCES;
+    }
+    
+    if (prot & PROT_WRITE) {
+        if (flags & MAP_SHARED && !(file->f_mode & FMODE_WRITE)) {
+            fput(&file);
+            return -EACCES;
+        }
+        if (file->f_mode & FMODE_APPEND) {
+            fput(&file);
+            return -EACCES;
+        }
+    }
+    
+    // Check if filesystem supports mmap
+    if (!file->f_vnode->vn_ops->mmap) {
+        fput(&file);
+        return -ENODEV;
+    }
+    
+    // Create file mapping
+    vmarea_t *new_vma;
+    long result = vmmap_map(curproc->p_vmmap, file->f_vnode, ADDR_TO_PN(off), npages, prot, flags, off, VMMAP_DIR_HILO, &new_vma);
+    
+    fput(&file);
+    
+    if (result < 0) {
+        return result;
+    }
+    
+    if (ret) {
+        *ret = (void *)PN_TO_ADDR(new_vma->vma_start);
+    }
+    
+    // Flush TLB for the new mapping
+    tlb_flush_range((void *)PN_TO_ADDR(new_vma->vma_start), page_len);
+    
+    return 0;
 }
 
 /*
@@ -78,6 +179,34 @@ long do_mmap(void *addr, size_t len, int prot, int flags, int fd, off_t off,
  */
 long do_munmap(void *addr, size_t len)
 {
-    NOT_YET_IMPLEMENTED("VM: do_munmap");
-    return -1;
+    KASSERT(curproc);
+    
+    // Error checking
+    if (len == 0) {
+        return -EINVAL;
+    }
+    
+    if (!PAGE_ALIGNED((uintptr_t)addr)) {
+        return -EINVAL;
+    }
+    
+    if ((uintptr_t)addr < USER_MEM_LOW || (uintptr_t)addr >= USER_MEM_HIGH) {
+        return -EINVAL;
+    }
+    
+    // Calculate page-aligned length
+    size_t page_len = PAGE_ALIGN_UP(len);
+    size_t npages = ADDR_TO_PN(page_len);
+    
+    // Remove the mapping
+    long result = vmmap_remove(curproc->p_vmmap, ADDR_TO_PN((uintptr_t)addr), npages);
+    
+    if (result < 0) {
+        return result;
+    }
+    
+    // Flush TLB for the unmapped region
+    tlb_flush_range(addr, page_len);
+    
+    return 0;
 }

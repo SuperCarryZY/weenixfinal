@@ -253,7 +253,7 @@ long ramfs_mount(struct fs *fs)
     /* And vget the root vnode */
     fs->fs_root = vget(fs, 0);
 
-    KASSERT(fs->fs_root != NULL); // 确保fs_root不为NULL
+    KASSERT(fs->fs_root != NULL);
 
     return 0;
 }

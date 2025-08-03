@@ -69,8 +69,45 @@ void syscall_init(void) { intr_register(INTR_SYSCALL, syscall_handler); }
  */
 static long sys_read(read_args_t *args)
 {
-    NOT_YET_IMPLEMENTED("VM: sys_read");
-    return -1;
+    read_args_t kernel_args;
+    
+    // Copy arguments from user space
+    if (copy_from_user(&kernel_args, args, sizeof(read_args_t)) < 0) {
+        return -1;
+    }
+    
+    // Validate arguments
+    if (kernel_args.fd < 0 || kernel_args.fd >= NFILES) {
+        ERROR_OUT(1, EBADF);
+    }
+    
+    if (!kernel_args.buf) {
+        ERROR_OUT(1, EINVAL);
+    }
+    
+    // Allocate temporary buffer
+    size_t buf_size = kernel_args.nbytes;
+    void *temp_buf = kmalloc(buf_size);
+    if (!temp_buf) {
+        ERROR_OUT(1, ENOMEM);
+    }
+    
+    // Call do_read with the temporary buffer
+    long bytes_read = do_read(kernel_args.fd, temp_buf, kernel_args.nbytes);
+    
+    if (bytes_read > 0) {
+        // Copy data back to user space
+        if (copy_to_user(kernel_args.buf, temp_buf, bytes_read) < 0) {
+            kfree(temp_buf);
+            ERROR_OUT(1, EFAULT);
+        }
+    }
+    
+    // Free the temporary buffer
+    kfree(temp_buf);
+    
+    ERROR_OUT_RET(bytes_read);
+    return bytes_read;
 }
 
 /*
@@ -84,8 +121,43 @@ static long sys_read(read_args_t *args)
  */
 static long sys_write(write_args_t *args)
 {
-    NOT_YET_IMPLEMENTED("VM: sys_write");
-    return -1;
+    write_args_t kernel_args;
+    
+    // Copy arguments from user space
+    if (copy_from_user(&kernel_args, args, sizeof(write_args_t)) < 0) {
+        return -1;
+    }
+    
+    // Validate arguments
+    if (kernel_args.fd < 0 || kernel_args.fd >= NFILES) {
+        ERROR_OUT(1, EBADF);
+    }
+    
+    if (!kernel_args.buf) {
+        ERROR_OUT(1, EINVAL);
+    }
+    
+    // Allocate temporary buffer
+    size_t buf_size = kernel_args.nbytes;
+    void *temp_buf = kmalloc(buf_size);
+    if (!temp_buf) {
+        ERROR_OUT(1, ENOMEM);
+    }
+    
+    // Copy data from user space to temporary buffer
+    if (copy_from_user(temp_buf, kernel_args.buf, kernel_args.nbytes) < 0) {
+        kfree(temp_buf);
+        ERROR_OUT(1, EFAULT);
+    }
+    
+    // Call do_write with the temporary buffer
+    long bytes_written = do_write(kernel_args.fd, temp_buf, kernel_args.nbytes);
+    
+    // Free the temporary buffer
+    kfree(temp_buf);
+    
+    ERROR_OUT_RET(bytes_written);
+    return bytes_written;
 }
 
 /*
@@ -100,8 +172,54 @@ static long sys_write(write_args_t *args)
  */
 static long sys_getdents(getdents_args_t *args)
 {
-    NOT_YET_IMPLEMENTED("VM: sys_getdents");
-    return -1;
+    getdents_args_t kernel_args;
+    
+    // Copy arguments from user space
+    if (copy_from_user(&kernel_args, args, sizeof(getdents_args_t)) < 0) {
+        return -1;
+    }
+    
+    // Validate arguments
+    if (kernel_args.fd < 0 || kernel_args.fd >= NFILES) {
+        ERROR_OUT(1, EBADF);
+    }
+    
+    if (!kernel_args.dirp) {
+        ERROR_OUT(1, EINVAL);
+    }
+    
+    if (kernel_args.count < sizeof(dirent_t)) {
+        ERROR_OUT(1, EINVAL);
+    }
+    
+    // Allocate temporary buffer
+    void *temp_buf = kmalloc(kernel_args.count);
+    if (!temp_buf) {
+        ERROR_OUT(1, ENOMEM);
+    }
+    
+    // Call do_getdents with the temporary buffer
+    long bytes_read = 0;
+    size_t total = 0;
+    while (total < kernel_args.count) {
+        bytes_read = do_getdent(kernel_args.fd, (struct dirent *)((char *)temp_buf + total));
+        if (bytes_read <= 0) break;
+        total += bytes_read;
+    }
+    
+    if (bytes_read > 0) {
+        // Copy data back to user space
+        if (copy_to_user(kernel_args.dirp, temp_buf, bytes_read) < 0) {
+            kfree(temp_buf);
+            ERROR_OUT(1, EFAULT);
+        }
+    }
+    
+    // Free the temporary buffer
+    kfree(temp_buf);
+    
+    ERROR_OUT_RET(bytes_read);
+    return bytes_read;
 }
 
 #ifdef __MOUNTING__

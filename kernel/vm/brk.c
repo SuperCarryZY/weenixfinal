@@ -53,6 +53,118 @@
  */
 long do_brk(void *addr, void **ret)
 {
-    NOT_YET_IMPLEMENTED("VM: do_brk");
+    KASSERT(curproc);
+    
+    // If addr is NULL, return current break
+    if (!addr) {
+        // If p_brk is NULL, initialize it to USER_MEM_LOW
+        if (!curproc->p_brk) {
+            curproc->p_start_brk = USER_MEM_LOW;
+            curproc->p_brk = USER_MEM_LOW;
+        }
+        *ret = (void *)curproc->p_brk;
+        return 0;
+    }
+    
+    uintptr_t new_brk = (uintptr_t)addr;
+    uintptr_t start_brk = curproc->p_start_brk;
+    uintptr_t current_brk = curproc->p_brk;
+    
+    // If this is the first brk call, set initial values
+    if (!start_brk) {
+        start_brk = USER_MEM_LOW;
+        curproc->p_start_brk = start_brk;
+    }
+    if (!current_brk) {
+        current_brk = start_brk;
+        curproc->p_brk = current_brk;
+    }
+    
+    // Check if new break is valid
+    if (new_brk < start_brk || new_brk > USER_MEM_HIGH) {
+        return -ENOMEM;
+    }
+    
+    // Calculate page-aligned boundaries
+    uintptr_t start_page = ADDR_TO_PN(PAGE_ALIGN_UP(start_brk));
+    uintptr_t current_page = ADDR_TO_PN(PAGE_ALIGN_UP(current_brk));
+    uintptr_t new_page = ADDR_TO_PN(PAGE_ALIGN_UP(new_brk));
+    
+    // Find existing heap vmarea
+    vmarea_t *heap_vma = NULL;
+    vmarea_t *vma;
+    list_iterate(&curproc->p_vmmap->vmm_list, vma, vmarea_t, vma_plink) {
+        if (vma->vma_start == start_page) {
+            heap_vma = vma;
+            break;
+        }
+    }
+    
+    if (new_brk == current_brk) {
+        // No change needed
+        *ret = (void *)new_brk;
+        return 0;
+    }
+    
+    if (new_brk > current_brk) {
+        // Expanding heap
+        uintptr_t expand_start = PAGE_ALIGN_UP(current_brk);
+        uintptr_t expand_end = PAGE_ALIGN_UP(new_brk);
+        size_t expand_pages = ADDR_TO_PN(expand_end - expand_start);
+        
+        if (expand_pages > 0) {
+            // Check if the expansion range is empty
+            if (vmmap_is_range_empty(curproc->p_vmmap, ADDR_TO_PN(expand_start), expand_pages) != 0) {
+                return -ENOMEM;
+            }
+            
+            if (heap_vma) {
+                // Extend existing heap vmarea
+                heap_vma->vma_end = new_page;
+            } else {
+                // Create new heap vmarea
+                vmarea_t *new_vma = vmarea_alloc();
+                if (!new_vma) {
+                    return -ENOMEM;
+                }
+                
+                new_vma->vma_start = start_page;
+                new_vma->vma_end = new_page;
+                new_vma->vma_off = 0;
+                new_vma->vma_prot = PROT_READ | PROT_WRITE;
+                new_vma->vma_flags = MAP_PRIVATE | MAP_ANON;
+                new_vma->vma_vmmap = curproc->p_vmmap;
+                new_vma->vma_obj = anon_create();
+                
+                if (!new_vma->vma_obj) {
+                    vmarea_free(new_vma);
+                    return -ENOMEM;
+                }
+                
+                vmmap_insert(curproc->p_vmmap, new_vma);
+            }
+        }
+        // If expand_pages is 0, just update the break without creating vmarea
+    } else {
+        // Shrinking heap
+        if (heap_vma) {
+            uintptr_t shrink_start = PAGE_ALIGN_UP(new_brk);
+            uintptr_t shrink_end = PAGE_ALIGN_UP(current_brk);
+            size_t shrink_pages = ADDR_TO_PN(shrink_end - shrink_start);
+            
+            if (shrink_pages > 0) {
+                // Remove the shrunk portion
+                vmmap_remove(curproc->p_vmmap, ADDR_TO_PN(shrink_start), shrink_pages);
+                
+                // Update heap vmarea end
+                heap_vma->vma_end = new_page;
+            }
+        }
+    }
+    
+    // Update the process break
+    curproc->p_brk = new_brk;
+    *ret = (void *)new_brk;
+    
     return 0;
 }

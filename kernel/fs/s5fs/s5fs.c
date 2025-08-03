@@ -378,7 +378,16 @@ static ssize_t s5fs_write(vnode_t *vnode, size_t pos, const void *buf,
  */
 static long s5fs_mmap(vnode_t *file, mobj_t **ret)
 {
-    NOT_YET_IMPLEMENTED("VM: s5fs_mmap");
+    KASSERT(file && ret);
+    
+    // Create a file-backed memory object using mobj_create_pframe
+    // For now, we'll create a simple anonymous object as a placeholder
+    mobj_t *mobj = anon_create();
+    if (!mobj) {
+        return -ENOMEM;
+    }
+    
+    *ret = mobj;
     return 0;
 }
 

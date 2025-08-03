@@ -484,6 +484,20 @@ long kshell_execute_next(kshell_t *ksh)
 
     if ((cmd = kshell_lookup_command(args[0], strlen(args[0]))) == NULL)
     {
+        // Try to execute as external program
+        char *argv_exec[KSH_MAX_ARGS];
+        char *envp_exec[] = {NULL};
+        
+        // Copy arguments for execve
+        for (size_t i = 0; i < argc; i++) {
+            argv_exec[i] = args[i];
+        }
+        argv_exec[argc] = NULL;
+        
+        // Try to execute the program
+        kernel_execve(args[0], argv_exec, envp_exec);
+        
+        // If we reach here, execve failed
         kprintf(ksh, "kshell: %s not a valid command\n", args[0]);
     }
     else

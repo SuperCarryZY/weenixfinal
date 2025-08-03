@@ -27,7 +27,8 @@ static mobj_ops_t anon_mobj_ops = {.get_pframe = NULL,
  */
 void anon_init()
 {
-    NOT_YET_IMPLEMENTED("VM: anon_init");
+    anon_allocator = slab_allocator_create("anon", sizeof(mobj_t));
+    KASSERT(anon_allocator);
 }
 
 /*
@@ -40,8 +41,18 @@ void anon_init()
  */
 mobj_t *anon_create()
 {
-    NOT_YET_IMPLEMENTED("VM: anon_create");
-    return NULL;
+    mobj_t *obj = slab_obj_alloc(anon_allocator);
+    if (!obj) {
+        return NULL;
+    }
+    
+    // Initialize the mobj with anonymous operations
+    mobj_init(obj, MOBJ_ANON, &anon_mobj_ops);
+    
+    // Lock the mobj before returning
+    mobj_lock(obj);
+    
+    return obj;
 }
 
 /* 
@@ -50,7 +61,11 @@ mobj_t *anon_create()
  */
 static long anon_fill_pframe(mobj_t *o, pframe_t *pf)
 {
-    NOT_YET_IMPLEMENTED("VM: anon_fill_pframe");
+    KASSERT(o && pf);
+    
+    // For anonymous objects, we fill the pframe with zeros
+    memset(pf->pf_addr, 0, PAGE_SIZE);
+    
     return 0;
 }
 
@@ -65,5 +80,11 @@ static long anon_flush_pframe(mobj_t *o, pframe_t *pf) { return 0; }
  */
 static void anon_destructor(mobj_t *o)
 {
-    NOT_YET_IMPLEMENTED("VM: anon_destructor");
+    KASSERT(o);
+    
+    // Call the default destructor to free pframes
+    mobj_default_destructor(o);
+    
+    // Free the mobj itself
+    slab_obj_free(anon_allocator, o);
 }

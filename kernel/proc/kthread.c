@@ -111,8 +111,42 @@ kthread_t *kthread_create(proc_t *proc, kthread_func_t func, long arg1, void *ar
  */
 kthread_t *kthread_clone(kthread_t *thr)
 {
-    NOT_YET_IMPLEMENTED("VM: kthread_clone");
-    return NULL;
+    KASSERT(thr);
+    
+    // Allocate a new thread
+    kthread_t *new_thr = slab_obj_alloc(kthread_allocator);
+    if (!new_thr) {
+        return NULL;
+    }
+    
+    // Allocate a new stack
+    char *stack = alloc_stack();
+    if (!stack) {
+        slab_obj_free(kthread_allocator, new_thr);
+        return NULL;
+    }
+    
+    // Initialize the new thread
+    memset(new_thr, 0, sizeof(kthread_t));
+    
+    // Copy basic fields from the original thread
+    new_thr->kt_retval = thr->kt_retval;
+    new_thr->kt_errno = thr->kt_errno;
+    new_thr->kt_cancelled = thr->kt_cancelled;
+    new_thr->kt_kstack = stack;
+    new_thr->kt_state = KT_NO_STATE;
+    new_thr->kt_preemption_count = 0;
+    new_thr->kt_wchan = NULL;
+    
+    // Initialize list links
+    list_link_init(&new_thr->kt_plink);
+    list_link_init(&new_thr->kt_qlink);
+    list_init(&new_thr->kt_mutexes);
+    
+    // Set up the context (process will be set later)
+    context_setup(&new_thr->kt_ctx, NULL, 0, NULL, stack, DEFAULT_STACK_SIZE, NULL);
+    
+    return new_thr;
 }
 
 /*

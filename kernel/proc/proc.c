@@ -214,7 +214,7 @@ proc_t *proc_create(const char *name)
 
     // Set page table and VM mapping
     proc->p_pml4 = pml4;
-    proc->p_vmmap = NULL; 
+    proc->p_vmmap = vmmap_create(); 
     
     // VFS setup: inherit current working directory and files from parent
     if (curproc && curproc->p_cwd) {

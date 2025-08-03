@@ -116,8 +116,20 @@ long user_vecdup(argvec_t *uvec, char ***kvecp)
  */
 long addr_perm(proc_t *p, const void *vaddr, int perm)
 {
-    NOT_YET_IMPLEMENTED("VM: addr_perm");
-    return 0;
+    KASSERT(p && p->p_vmmap);
+    
+    // Convert virtual address to page number
+    size_t vfn = ADDR_TO_PN((uintptr_t)vaddr);
+    
+    // Find the vmarea that contains this virtual address
+    vmarea_t *vma = vmmap_lookup(p->p_vmmap, vfn);
+    if (!vma) {
+        // No vmarea found for this address
+        return 0;
+    }
+    
+    // Check if the vmarea has the required permissions
+    return (vma->vma_prot & perm) == perm;
 }
 
 /*
@@ -131,6 +143,30 @@ long addr_perm(proc_t *p, const void *vaddr, int perm)
  */
 long range_perm(proc_t *p, const void *vaddr, size_t len, int perm)
 {
-    NOT_YET_IMPLEMENTED("VM: range_perm");
-    return 0;
+    KASSERT(p && p->p_vmmap);
+    
+    if (len == 0) {
+        return 1; // Empty range is always valid
+    }
+    
+    uintptr_t start_addr = (uintptr_t)vaddr;
+    uintptr_t end_addr = start_addr + len;
+    
+    // Check each page in the range
+    uintptr_t current_addr = start_addr;
+    while (current_addr < end_addr) {
+        // Check permissions for the current address
+        if (!addr_perm(p, (void *)current_addr, perm)) {
+            return 0;
+        }
+        
+        // Move to the next page
+        uintptr_t page_end = PAGE_ALIGN_UP(current_addr + 1);
+        if (page_end > end_addr) {
+            page_end = end_addr;
+        }
+        current_addr = page_end;
+    }
+    
+    return 1;
 }

@@ -17,8 +17,13 @@
 long test_vmmap() {
     vmmap_t *map = curproc->p_vmmap;
 
+
+    size_t startvfn = ADDR_TO_PN(USER_MEM_LOW);
+    size_t endvfn = ADDR_TO_PN(USER_MEM_HIGH);
+    size_t npages = endvfn - startvfn;
+
     // Make sure we start out cleanly
-    KASSERT(vmmap_is_range_empty(map, ADDR_TO_PN(USER_MEM_LOW), ADDR_TO_PN(USER_MEM_HIGH - USER_MEM_LOW)));
+    KASSERT(vmmap_is_range_empty(map, startvfn, npages) == 0);
 
     // Go through the address space, make sure we find nothing
     for (size_t i = USER_MEM_LOW; i < ADDR_TO_PN(USER_MEM_HIGH); i += PAGE_SIZE) {

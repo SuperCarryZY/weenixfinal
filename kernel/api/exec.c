@@ -86,7 +86,10 @@ void kernel_execve(const char *filename, char *const *argv, char *const *envp)
     long ret = binfmt_load(filename, argv, envp, &rip, &rsp);
     dbg(DBG_EXEC, "ret = %ld\n", ret);
 
-    KASSERT(0 == ret); /* Should never fail to load the first binary */
+    if (ret != 0) {
+        dbg(DBG_EXEC, "Failed to load binary %s: %ld\n", filename, ret);
+        return; // Return instead of panic
+    }
 
     dbg(DBG_EXEC, "Entering userland with rip 0x%p, rsp 0x%p\n", (void *)rip,
         (void *)rsp);

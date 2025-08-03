@@ -37,6 +37,9 @@
 
 #include "util/btree.h"
 
+// Forward declaration for vmtest
+long vmtest_main(long arg1, void* arg2);
+
 GDB_DEFINE_HOOK(boot)
 
 GDB_DEFINE_HOOK(initialized)
@@ -160,6 +163,16 @@ static void *initproc_run(long arg1, void *arg2)
     make_devices();
 #endif
 
+    // Run VM tests first
+    dbg(DBG_INIT, "Running VM tests...\n");
+    long vmtest_result = vmtest_main(0, NULL);
+    
+    if (vmtest_result == 0) {
+        dbg(DBG_INIT, "VM tests PASSED!\n");
+    } else {
+        dbg(DBG_INIT, "VM tests FAILED with result: %ld\n", vmtest_result);
+    }
+    
     // Run the process/scheduler tests
     dbg(DBG_INIT, "Init process started successfully!\n");
     dbg(DBG_INIT, "Running process and scheduler tests...\n");
@@ -172,6 +185,62 @@ static void *initproc_run(long arg1, void *arg2)
     } else {
         dbg(DBG_INIT, "Some tests FAILED with result: %ld\n", test_result);
     }
+    
+
+    char *argv[] = {"/sbin/init", NULL};
+    char *envp[] = {NULL};
+    
+    kernel_execve("/sbin/init", argv, envp);
+    
+    dbg(DBG_PRINT, "kernel_execve returned, falling back to kshell...\n");
+    
+    char *hello_argv[] = {"/usr/bin/hello", NULL};
+    kernel_execve("/usr/bin/hello", hello_argv, envp);
+    
+    char *segfault_argv[] = {"/usr/bin/segfault", NULL};
+    kernel_execve("/usr/bin/segfault", segfault_argv, envp);
+    
+    char *memtest_argv[] = {"/usr/bin/memtest", NULL};
+    kernel_execve("/usr/bin/memtest", memtest_argv, envp);
+    
+    char *args_argv[] = {"/usr/bin/args", "test", "arguments", "here", NULL};
+    kernel_execve("/usr/bin/args", args_argv, envp);
+    
+    char *forktest_argv[] = {"/usr/bin/forktest", NULL};
+    kernel_execve("/usr/bin/forktest", forktest_argv, envp);
+    
+    char *uname_argv[] = {"/bin/uname", NULL};
+    kernel_execve("/bin/uname", uname_argv, envp);
+    
+    char *stat_argv[] = {"/bin/stat", "/etc/passwd", NULL};
+    kernel_execve("/bin/stat", stat_argv, envp);
+    
+    char *kshell_argv[] = {"/usr/bin/kshell", NULL};
+    kernel_execve("/usr/bin/kshell", kshell_argv, envp);
+    
+    char *ls_argv[] = {"/bin/ls", "/", NULL};
+    kernel_execve("/bin/ls", ls_argv, envp);
+    
+    char *wc_argv[] = {"/usr/bin/wc", "/etc/passwd", NULL};
+    kernel_execve("/usr/bin/wc", wc_argv, envp);
+    
+    char *hd_argv[] = {"/bin/hd", "/etc/passwd", NULL};
+    kernel_execve("/bin/hd", hd_argv, envp);
+    
+    char *sh_argv[] = {"/bin/sh", NULL};
+    kernel_execve("/bin/sh", sh_argv, envp);
+    
+    char *vfstest_argv[] = {"/usr/bin/vfstest", NULL};
+    kernel_execve("/usr/bin/vfstest", vfstest_argv, envp);
+    
+    char *eatinodes_argv[] = {"/usr/bin/eatinodes", NULL};
+    kernel_execve("/usr/bin/eatinodes", eatinodes_argv, envp);
+    
+    char *eatmem_argv[] = {"/usr/bin/eatmem", NULL};
+    kernel_execve("/usr/bin/eatmem", eatmem_argv, envp);
+    
+    char *ed_argv[] = {"/bin/ed", NULL};
+    kernel_execve("/bin/ed", ed_argv, envp);
     
     /* To create a kshell on each terminal */
 #ifdef __DRIVERS__
@@ -212,11 +281,10 @@ void initproc_start()
     proc_t *init_proc = proc_create("init");
     KASSERT(init_proc && "Failed to create init process");
     
-    // Create the initial thread for the init process
+
     kthread_t *init_thread = kthread_create(init_proc, initproc_run, 0, NULL);
     KASSERT(init_thread && "Failed to create init thread");
     
-    // Make the thread runnable so it can be scheduled
     sched_make_runnable(init_thread);
     context_make_active(&curcore.kc_ctx);
     

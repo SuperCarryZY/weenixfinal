@@ -49,5 +49,65 @@ void handle_pagefault(uintptr_t vaddr, uintptr_t cause)
 {
     dbg(DBG_VM, "vaddr = 0x%p (0x%p), cause = %lu\n", (void *)vaddr,
         PAGE_ALIGN_DOWN(vaddr), cause);
-    NOT_YET_IMPLEMENTED("VM: handle_pagefault");
+    
+    KASSERT(curproc && curproc->p_vmmap);
+    
+    // Convert virtual address to page number
+    size_t vfn = ADDR_TO_PN(vaddr);
+    
+    // Find the vmarea that contains this virtual address
+    vmarea_t *vma = vmmap_lookup(curproc->p_vmmap, vfn);
+    if (!vma) {
+        // No vmarea found for this address
+        do_exit(EFAULT);
+        return;
+    }
+    
+    // Check permissions
+    int required_prot = 0;
+    if (cause & FAULT_WRITE) {
+        required_prot |= PROT_WRITE;
+    } else if (cause & FAULT_EXEC) {
+        required_prot |= PROT_EXEC;
+    } else {
+        // Assume read access
+        required_prot |= PROT_READ;
+    }
+    
+    // Check if the vmarea allows the required access
+    if ((vma->vma_prot & required_prot) != required_prot) {
+        do_exit(EFAULT);
+        return;
+    }
+    
+    // Calculate the offset into the memory object
+    size_t obj_offset = vfn - vma->vma_start + vma->vma_off;
+    
+    // Determine if this is a write operation
+    long forwrite = (cause & FAULT_WRITE) ? 1 : 0;
+    
+    // Get the pframe from the memory object
+    pframe_t *pf = mobj_get_pframe(vma->vma_obj, obj_offset, forwrite, 0);
+    if (!pf) {
+        do_exit(EFAULT);
+        return;
+    }
+    
+    // Get the physical address
+    uintptr_t paddr = pt_virt_to_phys((uintptr_t)pf->pf_addr);
+    
+    // Set up page table flags
+    int pdflags = PT_PRESENT | PT_WRITE | PT_USER;
+    int ptflags = PT_PRESENT | PT_USER;
+    
+    // Add write permission if the vmarea allows it and this is a write fault
+    if ((vma->vma_prot & PROT_WRITE) && (cause & FAULT_WRITE)) {
+        ptflags |= PT_WRITE;
+    }
+    
+    // Map the page
+    pt_map(curproc->p_pml4, paddr, (uintptr_t)PAGE_ALIGN_DOWN(vaddr), pdflags, ptflags);
+    
+    // Flush the TLB
+    tlb_flush_range((uintptr_t)PAGE_ALIGN_DOWN(vaddr), PAGE_SIZE);
 }
